@@ -10,13 +10,13 @@ source("R/preprocessing.R")
 source("R/prediction.R")
 source("R/explainability.R")
 
-cat("=" %R% 70, "\n")
+cat(strrep("=", 70), "\n")
 cat("Testing Medical Insurance Cost Prediction Application\n")
-cat("=" %R% 70, "\n\n")
+cat(strrep("=", 70), "\n\n")
 
 # Test 1: Configuration
 cat("Test 1: Configuration Loading\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 cat("Model directory:", CONFIG$models$dir, "\n")
 cat("Age range:", CONFIG$ranges$age[1], "to", CONFIG$ranges$age[2], "\n")
 cat("Region levels:", paste(CONFIG$levels$region, collapse = ", "), "\n")
@@ -24,7 +24,7 @@ cat("✓ Configuration loaded successfully\n\n")
 
 # Test 2: Logging initialization
 cat("Test 2: Logging Initialization\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 init_result <- init_logging()
 if (init_result) {
   cat("✓ Logging initialized successfully\n")
@@ -35,7 +35,7 @@ if (init_result) {
 
 # Test 3: Input Validation
 cat("Test 3: Input Validation\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 
 test_data_valid <- data.frame(
   age = 30,
@@ -75,7 +75,7 @@ cat("\n")
 
 # Test 4: Model Loading
 cat("Test 4: Model Loading\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 
 tryCatch({
   model_result <- load_all_models()
@@ -98,7 +98,7 @@ cat("\n")
 
 # Test 5: Preprocessing
 cat("Test 5: Data Preprocessing\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 
 tryCatch({
   # Test XGBoost preprocessing
@@ -122,7 +122,7 @@ cat("\n")
 
 # Test 6: Prediction (if models loaded)
 cat("Test 6: Prediction\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 
 if (!is.null(test_models)) {
   # Test predictions with each model type
@@ -152,7 +152,7 @@ cat("\n")
 
 # Test 7: Model Metrics
 cat("Test 7: Model Performance Metrics\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 
 if (!is.null(test_models)) {
   tryCatch({
@@ -174,7 +174,7 @@ cat("\n")
 
 # Test 8: Explainability
 cat("Test 8: Explainability (SHAP)\n")
-cat("-" %R% 70, "\n")
+cat(strrep("-", 70), "\n")
 
 if (!is.null(test_models) && !is.null(test_models$xgboost) && !is.null(test_models$train_data)) {
   tryCatch({
@@ -194,9 +194,9 @@ if (!is.null(test_models) && !is.null(test_models$xgboost) && !is.null(test_mode
 cat("\n")
 
 # Summary
-cat("=" %R% 70, "\n")
+cat(strrep("=", 70), "\n")
 cat("Test Summary\n")
-cat("=" %R% 70, "\n")
+cat(strrep("=", 70), "\n")
 cat("All core components have been tested.\n")
 cat("To run the full application, use: shiny::runApp('app.R')\n")
-cat("=" %R% 70, "\n")
+cat(strrep("=", 70), "\n")

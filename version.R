@@ -103,9 +103,9 @@ get_model_version <- function(model_name) {
 
 #' Print version information
 print_version_info <- function() {
-  cat("=" %R% 70, "\n")
+  cat(strrep("=", 70), "\n")
   cat("Medical Insurance Cost Prediction Application\n")
-  cat("=" %R% 70, "\n")
+  cat(strrep("=", 70), "\n")
   cat(sprintf("Version: %s\n", VERSION$app$version))
   cat(sprintf("Release Date: %s\n", VERSION$app$release_date))
   cat(sprintf("Description: %s\n", VERSION$app$description))
@@ -114,5 +114,5 @@ print_version_info <- function() {
     model_info <- VERSION$models[[model_name]]
     cat(sprintf("  - %s (v%s): %s\n", model_name, model_info$version, model_info$algorithm))
   }
-  cat("=" %R% 70, "\n")
+  cat(strrep("=", 70), "\n")
 }

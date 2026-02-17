@@ -125,12 +125,12 @@ health_check <- function() {
 #' @param results Health check results from health_check()
 print_health_check <- function(results) {
   cat("\n")
-  cat("=" %R% 70, "\n")
+  cat(strrep("=", 70), "\n")
   cat("Health Check Report\n")
-  cat("=" %R% 70, "\n")
+  cat(strrep("=", 70), "\n")
   cat(sprintf("Timestamp: %s\n", results$timestamp))
   cat(sprintf("Overall Status: %s\n", toupper(results$overall_status)))
-  cat("=" %R% 70, "\n\n")
+  cat(strrep("=", 70), "\n\n")
   
   for (check_name in names(results$checks)) {
     check <- results$checks[[check_name]]
@@ -144,7 +144,7 @@ print_health_check <- function(results) {
   }
   
   cat("\n")
-  cat("=" %R% 70, "\n")
+  cat(strrep("=", 70), "\n")
   
   if (results$overall_status == "healthy") {
     cat("All systems operational. Application ready to run.\n")
@@ -154,7 +154,7 @@ print_health_check <- function(results) {
     cat("Critical issues detected. Please resolve errors before running.\n")
   }
   
-  cat("=" %R% 70, "\n\n")
+  cat(strrep("=", 70), "\n\n")
 }
 
 # Run health check if script is executed directly
