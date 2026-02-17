@@ -1,0 +1,46 @@
+# Git
+.git
+.gitignore
+
+# R specific
+.Rproj.user
+.Rhistory
+.RData
+.Ruserdata
+*.Rproj
+
+# Logs (will be created at runtime)
+logs/
+*.log
+
+# Documentation
+*.Rmd
+*.html
+*.pdf
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Original app backup
+app_original.R
+
+# Test files
+tests/
+
+# CI/CD
+.github/
+
+# Deployment configs
+manifest.json
+rsconnect/
+
+# Environment
+.env
+.Renviron
