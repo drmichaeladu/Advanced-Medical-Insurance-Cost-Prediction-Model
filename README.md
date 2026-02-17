@@ -199,6 +199,33 @@ print(result)
 
 ## 📝 Deployment
 
+### Deploy with Docker (Recommended for Production)
+The easiest way to deploy the application:
+
+```bash
+# Build and run with Docker Compose
+docker-compose up -d
+
+# Access the application at http://localhost:3838
+
+# View logs
+docker-compose logs -f
+
+# Stop the application
+docker-compose down
+```
+
+Or build manually:
+```bash
+# Build the Docker image
+docker build -t insurance-predictor .
+
+# Run the container
+docker run -d -p 3838:3838 --name insurance-app insurance-predictor
+
+# Access at http://localhost:3838
+```
+
 ### Deploy to Shinyapps.io
 ```R
 library(rsconnect)
@@ -210,6 +237,14 @@ The repository includes `Procfile` and `runtime.txt` for Heroku deployment:
 ```bash
 heroku create your-app-name
 git push heroku main
+```
+
+### Health Check Endpoint
+Before deployment, run the health check script:
+```R
+source("health_check.R")
+results <- health_check()
+print_health_check(results)
 ```
 
 ## 👤 Author

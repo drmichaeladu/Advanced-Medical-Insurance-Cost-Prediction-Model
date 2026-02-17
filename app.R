@@ -1,7 +1,11 @@
+# Medical Insurance Cost Prediction - Modular Shiny Application
+# Author: Dr. Michael Adu
+# Production-ready version with proper error handling and logging
+
 # Function to ensure required libraries are installed
 check_and_install <- function(packages) {
   for (pkg in packages) {
-    if (!require(pkg, character.only = TRUE)) {
+    if (!require(pkg, character.only = TRUE, quietly = TRUE)) {
       install.packages(pkg, dependencies = TRUE)
       library(pkg, character.only = TRUE)
     }
@@ -30,139 +34,46 @@ library(DALEXtra)
 library(plotly)
 library(dplyr)
 
-# Load trained models
-model_path <- "./models/"  # Models should be in the 'models' directory
-load(file.path(model_path, "linear_model.RData"))  # Loads `linear_model`
-load(file.path(model_path, "random_forest_model.RData"))  # Loads `rf_optimized`
-load(file.path(model_path, "xgboost_model.RData"))  # Loads `xgb_best`
-dummy_model <- readRDS(file.path(model_path, "dummy_model.rds"))  # Loads dummy model
+# Source modular components
+source("config.R")
+source("utils/logger.R")
+source("utils/validators.R")
+source("R/model_loader.R")
+source("R/preprocessing.R")
+source("R/prediction.R")
+source("R/explainability.R")
 
-# Correct references to models and variables
-linear_model <- lm_model
-random_forest_model <- rf_optimized
-xgboost_model <- xgb_best
+# Initialize logging
+init_logging()
 
-# Prepare target variable
-y_target <- train_data$charges
+# Load all models with error handling
+cat("Loading models...\n")
+model_load_result <- load_all_models()
 
-# Exclude the target variable for model input
-train_data_features <- train_data
-train_data_features$charges <- NULL
-
-# Convert categorical variables to dummy/one-hot encoding
-train_data_numeric <- model.matrix(~ . - 1, data = train_data_features)
-train_data_numeric <- as.matrix(train_data_numeric) # Ensure it's a matrix
-
-# Verify dimensions
-if (nrow(train_data_numeric) != length(y_target)) {
-  stop("Mismatch between feature matrix rows and target variable length.")
+if (!model_load_result$success) {
+  stop("Failed to load required models. Please check the models directory.")
 }
 
-# Create XGBoost explainer
-xgb_explainer <- explain_xgboost(
-  model = xgboost_model,
-  data = train_data_numeric,
-  y = y_target,
-  label = "XGBoost"
-)
+# Extract loaded models
+app_models <- model_load_result$models
+loaded_model_names <- model_load_result$loaded
 
-# Separate preprocessing pipelines
-preprocess_data_xgb <- function(data, train_columns = xgb_best$feature_names) {
-  # Encode 'smoker' as 1 for 'yes' and 0 for 'no'
-  data <- data %>%
-    mutate(
-      smoker.yes = ifelse(smoker == "yes", 1, 0),       # Binary encode smoker
-      smoker_bmi = ifelse(smoker == "yes", bmi, 0),    # Derived feature
-      age_squared = age^2                              # Derived feature
-    )
-  
-  # One-hot encode 'region' with explicit columns for consistency
-  region_levels <- c("northwest", "southeast", "southwest")
-  for (region in region_levels) {
-    col_name <- paste0("region.", region)
-    data[[col_name]] <- ifelse(data$region == region, 1, 0)
-  }
-  data <- data %>% select(-region)  # Drop original 'region'
-  
-  # Handle 'sex' column (binary encoding for male)
-  if ("sex" %in% colnames(data)) {
-    data <- data %>%
-      mutate(sex.male = ifelse(sex == "male", 1, 0)) %>%
-      select(-sex)  # Drop original 'sex'
-  }
-  
-  # Ensure all required features are included
-  if (!is.null(train_columns)) {
-    # Add missing columns with default values of 0
-    missing_cols <- setdiff(train_columns, colnames(data))
-    if (length(missing_cols) > 0) {
-      data[missing_cols] <- 0
-    }
-    
-    # Remove extra columns not present in train_columns
-    extra_cols <- setdiff(colnames(data), train_columns)
-    if (length(extra_cols) > 0) {
-      data <- data[, train_columns, drop = FALSE]
-    }
-  }
-  
-  # Ensure all columns are numeric
-  data <- data %>% mutate(across(everything(), as.numeric))
-  
-  # Remove the target variable 'charges' for predictions if present
-  data$charges <- NULL
-  
-  # Arrange columns in the order of `train_columns`
-  data <- data[, train_columns[train_columns != "charges"], drop = FALSE]
-  
-  return(data)
-}
-preprocess_data_rf <- function(data) {
-  # Add derived features
-  data$smoker_bmi <- ifelse(data$smoker == "yes", data$bmi, 0)
-  data$age_squared <- data$age^2
-  
-  # Ensure categorical variables are factors with consistent levels
-  data$smoker <- factor(data$smoker, levels = c("yes", "no"))
-  data$region <- factor(data$region, levels = c("northeast", "northwest", "southeast", "southwest"))
-  
-  # Random Forest works with raw data frames, no need for encoding
-  return(data)
+cat(sprintf("Successfully loaded models: %s\n", paste(loaded_model_names, collapse = ", ")))
+
+# Create explainer for SHAP visualizations (if XGBoost and training data available)
+xgb_explainer <- NULL
+if (!is.null(app_models$xgboost) && !is.null(app_models$train_data)) {
+  cat("Creating XGBoost explainer for SHAP visualizations...\n")
+  xgb_explainer <- create_xgb_explainer(app_models$xgboost, app_models$train_data)
 }
 
-# Updated predict_cost function
-predict_cost <- function(input_data, xgb_model, rf_model, lm_model, dummy_model, model_type = "xgboost") {
-  # Preprocess input data based on model type
-  if (model_type == "xgboost") {
-    preprocessed_data <- preprocess_data_xgb(input_data)
-  } else if (model_type == "random_forest") {
-    preprocessed_data <- preprocess_data_rf(input_data)
-  } else if (model_type == "dummy") {
-    preprocessed_data <- preprocess_data_xgb(input_data)
-  } else {
-    preprocessed_data <- input_data
-  }
-  
-  # Predict using the selected model
-  if (model_type == "xgboost") {
-    prediction <- predict(xgb_model, as.matrix(preprocessed_data))
-  } else if (model_type == "random_forest") {
-    prediction <- predict(rf_model, preprocessed_data)
-  } else if (model_type == "linear_model") {
-    prediction <- predict(lm_model, input_data)
-  } else if (model_type == "dummy") {
-    prediction <- predict(dummy_model, newdata = preprocessed_data)
-  } else {
-    stop("Invalid model type. Choose either 'xgboost', 'random_forest', 'linear_model', or 'dummy'.")
-  }
-  
-  return(prediction)
-}
-
+# Calculate model metrics for comparison
+cat("Calculating model performance metrics...\n")
+model_metrics <- get_model_metrics(app_models)
 
 # UI Section
 ui <- dashboardPage(
-  dashboardHeader(title = "Medical Insurance Cost Prediction"),
+  dashboardHeader(title = CONFIG$app$title),
   dashboardSidebar(
     sidebarMenu(
       menuItem("Home", tabName = "home", icon = icon("home")),
@@ -178,15 +89,23 @@ ui <- dashboardPage(
         tabName = "home",
         fluidRow(
           box(
-            title = "Welcome to the Medical Insurance Cost Prediction App",
+            title = paste("Welcome to the", CONFIG$app$title, "App"),
             width = 12,
             status = "primary",
             solidHeader = TRUE,
             p("This app predicts medical costs using advanced machine learning models."),
             p("Explore features like model performance comparison, batch predictions, and explainable AI insights using SHAP visualizations."),
-            p("Author: Dr. Michael Adu"),
-            p("Email: mikekay262@gmail.com"),
-            p("LinkedIn: ", a("Dr. Michael Adu", href = "https://www.linkedin.com/in/drmichael-adu"))
+            p(sprintf("Author: %s", CONFIG$app$author)),
+            p(sprintf("Email: %s", CONFIG$app$email)),
+            p("LinkedIn: ", a(CONFIG$app$author, href = CONFIG$app$linkedin)),
+            hr(),
+            h4("Available Models:"),
+            tags$ul(
+              if (!is.null(app_models$linear)) tags$li("Linear Regression"),
+              if (!is.null(app_models$random_forest)) tags$li("Random Forest"),
+              if (!is.null(app_models$xgboost)) tags$li("XGBoost"),
+              if (!is.null(app_models$dummy)) tags$li("Dummy Model (Baseline)")
+            )
           )
         )
       ),
@@ -197,21 +116,39 @@ ui <- dashboardPage(
             title = "Input Patient Details",
             width = 6,
             status = "info",
-            numericInput("age", "Age:", value = 30, min = 18, max = 64, step = 1),
-            selectInput("sex", "Sex:", choices = c("male", "female")),
-            numericInput("bmi", "BMI:", value = 25, min = 15, max = 55, step = 0.1),
-            numericInput("children", "Number of Children:", value = 0, min = 0, max = 5, step = 1),
-            selectInput("smoker", "Smoker:", choices = c("yes", "no")),
-            selectInput("region", "Region:", choices = c("northeast", "northwest", "southeast", "southwest")),
-            pickerInput("model_choice", "Select Model:", choices = c("Linear Regression", "Random Forest", "XGBoost"), selected = "XGBoost"),
-            actionButton("predict", "Predict")
+            numericInput("age", "Age:", 
+                        value = 30, 
+                        min = CONFIG$ranges$age[1], 
+                        max = CONFIG$ranges$age[2], 
+                        step = 1),
+            selectInput("sex", "Sex:", choices = CONFIG$levels$sex),
+            numericInput("bmi", "BMI:", 
+                        value = 25, 
+                        min = CONFIG$ranges$bmi[1], 
+                        max = CONFIG$ranges$bmi[2], 
+                        step = 0.1),
+            numericInput("children", "Number of Children:", 
+                        value = 0, 
+                        min = CONFIG$ranges$children[1], 
+                        max = CONFIG$ranges$children[2], 
+                        step = 1),
+            selectInput("smoker", "Smoker:", choices = CONFIG$levels$smoker),
+            selectInput("region", "Region:", choices = CONFIG$levels$region),
+            pickerInput("model_choice", "Select Model:", 
+                       choices = c(
+                         if (!is.null(app_models$linear)) "Linear Regression",
+                         if (!is.null(app_models$random_forest)) "Random Forest",
+                         if (!is.null(app_models$xgboost)) "XGBoost"
+                       ), 
+                       selected = if (!is.null(app_models$xgboost)) "XGBoost" else NULL),
+            actionButton("predict", "Predict", class = "btn-primary")
           ),
           box(
             title = "Prediction Results",
             width = 6,
             status = "success",
             solidHeader = TRUE,
-            verbatimTextOutput("prediction")
+            htmlOutput("prediction")
           )
         )
       ),
@@ -233,7 +170,12 @@ ui <- dashboardPage(
             title = "SHAP Visualizations",
             width = 12,
             status = "info",
-            selectInput("shap_type", "Select Visualization Type:", choices = c("Feature Importance", "Individual Explanation")),
+            selectInput("shap_type", "Select Visualization Type:", 
+                       choices = c("Feature Importance", "Individual Explanation")),
+            conditionalPanel(
+              condition = "input.shap_type == 'Individual Explanation'",
+              p("Note: Individual explanation will use the most recent prediction inputs.")
+            ),
             plotOutput("shapPlot", height = "500px")
           )
         )
@@ -249,9 +191,19 @@ ui <- dashboardPage(
             p("This project demonstrates the use of machine learning models to predict medical costs."),
             p("Features advanced regression techniques like Linear Regression, Random Forest, and XGBoost."),
             p("Explainability tools ensure the predictions are interpretable and actionable."),
-            p("Contact: Dr. Michael Adu"),
-            p("Email: mikekay262@gmail.com"),
-            p("LinkedIn: ", a("Dr. Michael Adu", href = "https://www.linkedin.com/in/drmichael-adu"))
+            hr(),
+            h4("Technical Features:"),
+            tags$ul(
+              tags$li("Modular code architecture for maintainability"),
+              tags$li("Comprehensive error handling and validation"),
+              tags$li("Production-ready logging system"),
+              tags$li("SHAP-based model explainability"),
+              tags$li("Interactive model comparison visualizations")
+            ),
+            hr(),
+            p(sprintf("Contact: %s", CONFIG$app$author)),
+            p(sprintf("Email: %s", CONFIG$app$email)),
+            p("LinkedIn: ", a(CONFIG$app$author, href = CONFIG$app$linkedin))
           )
         )
       )
@@ -261,48 +213,103 @@ ui <- dashboardPage(
 
 # Server Section
 server <- function(input, output, session) {
+  # Reactive value to store last prediction input for SHAP
+  last_input <- reactiveVal(NULL)
+  
   # Predict function
   predict_cost_output <- reactive({
     req(input$predict)
     
+    # Create user data frame
     user_data <- data.frame(
       age = input$age,
       sex = input$sex,
       bmi = input$bmi,
       children = input$children,
       smoker = input$smoker,
-      region = input$region
+      region = input$region,
+      stringsAsFactors = FALSE
     )
     
-    # Add engineered features
-    user_data$smoker_bmi <- ifelse(user_data$smoker == "yes", user_data$bmi, 0)
-    user_data$age_squared <- user_data$age^2
+    # Store for SHAP visualization
+    last_input(user_data)
     
-    model <- switch(input$model_choice,
-                    "Linear Regression" = linear_model,
-                    "Random Forest" = random_forest_model,
-                    "XGBoost" = xgboost_model
-    )
-    
-    # Map model choice to model_type for predict_cost function
+    # Map model choice to model_type
     model_type <- switch(input$model_choice,
-                         "Linear Regression" = "linear_model",
-                         "Random Forest" = "random_forest",
-                         "XGBoost" = "xgboost")
+                        "Linear Regression" = "linear_model",
+                        "Random Forest" = "random_forest",
+                        "XGBoost" = "xgboost",
+                        stop("Invalid model selection"))
     
-    # Corrected function call: Removed encoder argument
-    prediction <- predict_cost(user_data,
-                               xgb_model = xgboost_model, 
-                               rf_model = random_forest_model, 
-                               lm_model = linear_model, 
-                               model_type = model_type)
-    return(prediction)
+    # Make prediction with error handling
+    tryCatch({
+      prediction <- predict_cost(user_data, app_models, model_type)
+      return(list(success = TRUE, value = prediction, error = NULL))
+    }, error = function(e) {
+      return(list(success = FALSE, value = NULL, error = e$message))
+    })
   })
   
   # Render prediction
-  output$prediction <- renderText({
-    cost <- predict_cost_output()
-    paste("Predicted Medical Cost: $", round(cost, 2))
+  output$prediction <- renderUI({
+    result <- predict_cost_output()
+    
+    if (result$success) {
+      tagList(
+        h3(sprintf("Predicted Medical Cost: $%s", format(round(result$value, 2), big.mark = ","))),
+        p(sprintf("Model used: %s", input$model_choice)),
+        p(class = "text-muted", sprintf("Prediction made at: %s", format(Sys.time(), "%Y-%m-%d %H:%M:%S")))
+      )
+    } else {
+      tagList(
+        h3("Prediction Error", class = "text-danger"),
+        p(result$error, class = "text-danger")
+      )
+    }
+  })
+  
+  # Model comparison plot
+  output$modelComparisonPlot <- renderPlotly({
+    if (!is.null(model_metrics)) {
+      plot_model_comparison(model_metrics)
+    } else {
+      # Return empty plot with message
+      plotly::plot_ly() %>%
+        plotly::layout(
+          title = "Model metrics unavailable",
+          annotations = list(
+            text = "Training data not available for comparison",
+            xref = "paper",
+            yref = "paper",
+            x = 0.5,
+            y = 0.5,
+            showarrow = FALSE
+          )
+        )
+    }
+  })
+  
+  # SHAP visualization
+  output$shapPlot <- renderPlot({
+    if (is.null(xgb_explainer)) {
+      plot.new()
+      text(0.5, 0.5, "SHAP visualizations unavailable\n(XGBoost model or training data not loaded)", 
+           cex = 1.5, col = "red")
+      return(NULL)
+    }
+    
+    if (input$shap_type == "Feature Importance") {
+      plot_feature_importance(xgb_explainer)
+    } else if (input$shap_type == "Individual Explanation") {
+      current_input <- last_input()
+      if (is.null(current_input)) {
+        plot.new()
+        text(0.5, 0.5, "Make a prediction first to see individual explanation", 
+             cex = 1.2, col = "blue")
+        return(NULL)
+      }
+      plot_individual_explanation(xgb_explainer, current_input)
+    }
   })
 }
 

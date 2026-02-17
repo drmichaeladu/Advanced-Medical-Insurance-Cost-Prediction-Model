@@ -1,0 +1,22 @@
+# Docker Compose configuration for Medical Insurance Cost Prediction App
+
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: insurance-predictor
+    ports:
+      - "3838:3838"
+    volumes:
+      # Mount logs directory for persistence
+      - ./logs:/srv/shiny-server/insurance-predictor/logs
+    environment:
+      - SHINY_LOG_LEVEL=INFO
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3838"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
